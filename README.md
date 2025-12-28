@@ -2,6 +2,25 @@
 
 RetainOps is a production-style executive dashboard for customer retention strategy and budget optimization. It combines machine learning-powered churn prediction with budget-constrained policy simulation to help leadership teams make data-driven retention decisions.
 
+## 🚀 Live Demo
+
+🔗 **Try the live application:**  
+https://retainops.streamlit.app
+
+> No setup required. Upload the provided sample dataset or your own CSV to explore churn predictions, retention policies, and budget optimization insights.
+
+---
+
+## Sample Dataset
+
+This repository includes a **representative real-world sample dataset** (`sample_customer_data.csv`) designed to reflect realistic customer behavior patterns while preserving privacy.
+
+You can use this file to:
+- Quickly test the application
+- Understand expected input formats
+- Explore system outputs without additional preprocessing
+
+
 ## Features
 
 - **Data-Driven Churn Prediction**: CatBoost-based probabilistic churn risk modeling
