@@ -104,8 +104,5 @@ RetainOps/
 
 This project is provided as-is for demonstration and educational purposes.
 
-## Support
-
-For detailed explanations of the system architecture, design decisions, and implementation details, see `EXPLANATION.md`.
 
 
