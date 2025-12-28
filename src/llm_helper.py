@@ -1,33 +1,17 @@
 """
-LLM integration for strategy explanations and what-if analysis.
+Rule-based explainable insights generator (Demo Mode - No External APIs).
+Replaces LLM-based explanations with deterministic, interpretable explanations
+derived from ML feature importance, statistics, and business heuristics.
 """
 
-import os
-import openai
-from typing import Dict, Any, Optional
-
-
-def get_llm_client():
-    """
-    Initialize OpenAI client from environment variable.
-    
-    Returns:
-        OpenAI client or None if API key not set
-    """
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        return None
-    
-    try:
-        client = openai.OpenAI(api_key=api_key)
-        return client
-    except Exception:
-        return None
+from typing import Dict, Any, List, Tuple
+import pandas as pd
+import numpy as np
 
 
 def explain_churn_drivers(feature_importance: Dict[str, float], top_n: int = 5) -> str:
     """
-    Generate explanation of top churn drivers using LLM.
+    Generate rule-based explanation of top churn drivers using feature importance.
     
     Args:
         feature_importance: Dictionary of feature names to importance scores
@@ -36,40 +20,79 @@ def explain_churn_drivers(feature_importance: Dict[str, float], top_n: int = 5) 
     Returns:
         str: Explanation text
     """
-    client = get_llm_client()
-    if not client:
-        return "LLM explanations require OPENAI_API_KEY environment variable to be set."
+    if not feature_importance:
+        return "No feature importance data available."
     
     # Get top N features
     sorted_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
     top_features = sorted_features[:top_n]
     
-    feature_list = "\n".join([f"- {name}: {score:.4f}" for name, score in top_features])
+    if not top_features:
+        return "No features available for analysis."
     
-    prompt = f"""As a data science consultant, explain the top churn drivers based on feature importance analysis.
-Focus on business implications and actionable insights, not technical ML details.
-
-Top features by importance:
-{feature_list}
-
-Provide a concise explanation (2-3 paragraphs) of what these features tell us about customer churn drivers.
-Be specific and business-focused."""
+    # Generate explanation based on feature names and importance scores
+    explanation_parts = [
+        "## Top Churn Drivers Analysis\n\n",
+        "Based on the machine learning model's feature importance analysis, "
+        "the following factors are most predictive of customer churn:\n\n"
+    ]
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=400
+    # Common business interpretations for feature names
+    feature_interpretations = {
+        'contract_type': 'contract type and commitment level',
+        'tenure_months': 'customer tenure and relationship length',
+        'monthly_charges': 'pricing and monthly cost',
+        'total_charges': 'total customer value',
+        'payment_method': 'payment preference and convenience',
+        'internet_service': 'service type and quality',
+        'age': 'customer demographics',
+        'revenue': 'customer revenue contribution'
+    }
+    
+    for idx, (feature, importance) in enumerate(top_features, 1):
+        feature_display = feature_interpretations.get(feature.lower(), feature.replace('_', ' ').title())
+        importance_pct = (importance / sum([f[1] for f in top_features])) * 100
+        
+        explanation_parts.append(
+            f"**{idx}. {feature_display.title()}** (Importance: {importance:.4f}, "
+            f"Relative Weight: {importance_pct:.1f}%)\n"
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Error generating explanation: {str(e)}"
+        
+        # Add specific interpretation based on feature type
+        if 'contract' in feature.lower() or 'tenure' in feature.lower():
+            explanation_parts.append(
+                "   - Customer commitment level strongly predicts retention. "
+                "Shorter contracts or newer customers show higher churn risk.\n"
+            )
+        elif 'charge' in feature.lower() or 'revenue' in feature.lower() or 'price' in feature.lower():
+            explanation_parts.append(
+                "   - Pricing sensitivity is a key churn driver. "
+                "Both high-cost and low-value customers may be at risk.\n"
+            )
+        elif 'payment' in feature.lower():
+            explanation_parts.append(
+                "   - Payment method preferences correlate with churn behavior. "
+                "Different payment types indicate different customer segments.\n"
+            )
+        else:
+            explanation_parts.append(
+                "   - This feature significantly contributes to churn prediction accuracy.\n"
+            )
+    
+    explanation_parts.append(
+        "\n### Business Implications\n\n"
+        "Focus retention efforts on customers with characteristics matching the highest-importance features. "
+        "These drivers represent the most actionable levers for reducing churn. "
+        "Consider targeting interventions (e.g., discounts, outreach, service improvements) based on "
+        "these predictive factors to maximize retention ROI."
+    )
+    
+    return "".join(explanation_parts)
 
 
 def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, intervention_cost: float) -> str:
     """
-    Explain the retention policy strategy and rationale.
+    Generate rule-based explanation of retention policy strategy.
     
     Args:
         scenario_results: Dictionary with scenario metrics
@@ -79,91 +102,227 @@ def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, in
     Returns:
         str: Explanation text
     """
-    client = get_llm_client()
-    if not client:
-        return "LLM explanations require OPENAI_API_KEY environment variable to be set."
-    
     n_interventions = scenario_results.get('n_interventions', 0)
     expected_revenue_saved = scenario_results.get('expected_revenue_saved', 0)
     roi = scenario_results.get('roi', 0)
     net_benefit = scenario_results.get('net_benefit', 0)
+    total_cost = scenario_results.get('total_cost', n_interventions * intervention_cost)
     
-    prompt = f"""As a retention strategy consultant, explain the retention policy allocation strategy.
-
-Key metrics:
-- Total budget: ${budget:,.0f}
-- Cost per intervention: ${intervention_cost:,.0f}
-- Number of interventions allocated: {n_interventions}
-- Expected revenue saved: ${expected_revenue_saved:,.0f}
-- Net benefit: ${net_benefit:,.0f}
-- ROI: {roi:.1f}%
-
-Explain the strategic rationale behind this allocation approach. What does this tell us about the retention strategy?
-Focus on business logic and decision-making framework, not technical implementation."""
+    explanation_parts = [
+        "## Retention Policy Strategy Analysis\n\n",
+        "### Allocation Summary\n\n"
+    ]
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=400
+    # Budget utilization analysis
+    budget_utilization = (total_cost / budget * 100) if budget > 0 else 0
+    explanation_parts.append(
+        f"- **Budget Utilized**: ${total_cost:,.0f} of ${budget:,.0f} available ("
+        f"{budget_utilization:.1f}% utilization)\n"
+    )
+    explanation_parts.append(f"- **Interventions Allocated**: {n_interventions:,} customers\n")
+    explanation_parts.append(f"- **Cost per Intervention**: ${intervention_cost:,.2f}\n\n")
+    
+    # ROI analysis
+    explanation_parts.append("### Financial Performance\n\n")
+    explanation_parts.append(f"- **Expected Revenue Saved**: ${expected_revenue_saved:,.0f}\n")
+    explanation_parts.append(f"- **Net Benefit**: ${net_benefit:,.0f}\n")
+    explanation_parts.append(f"- **Return on Investment (ROI)**: {roi:.1f}%\n\n")
+    
+    # Strategic interpretation
+    explanation_parts.append("### Strategic Assessment\n\n")
+    
+    if roi > 200:
+        explanation_parts.append(
+            "**Excellent ROI**: This strategy demonstrates very strong financial performance. "
+            "The expected revenue saved significantly exceeds intervention costs, indicating "
+            "high-value targets were prioritized effectively.\n\n"
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Error generating explanation: {str(e)}"
+    elif roi > 100:
+        explanation_parts.append(
+            "**Strong ROI**: This strategy shows solid financial returns. The allocation "
+            "effectively balances intervention costs with expected revenue protection.\n\n"
+        )
+    elif roi > 50:
+        explanation_parts.append(
+            "**Positive ROI**: This strategy generates positive returns, indicating effective "
+            "prioritization of high-value, high-risk customers.\n\n"
+        )
+    elif roi > 0:
+        explanation_parts.append(
+            "**Modest ROI**: While positive, this strategy shows relatively modest returns. "
+            "Consider optimizing targeting criteria or intervention effectiveness.\n\n"
+        )
+    else:
+        explanation_parts.append(
+            "**Negative ROI**: This strategy does not generate positive returns. "
+            "Review targeting criteria, intervention costs, or consider alternative approaches.\n\n"
+        )
+    
+    # Efficiency analysis
+    if n_interventions > 0:
+        revenue_per_intervention = expected_revenue_saved / n_interventions
+        explanation_parts.append(
+            f"**Efficiency Metrics**: Average revenue saved per intervention: "
+            f"${revenue_per_intervention:,.0f}. "
+        )
+        
+        if revenue_per_intervention > intervention_cost * 2:
+            explanation_parts.append("Interventions are highly cost-effective.\n\n")
+        elif revenue_per_intervention > intervention_cost:
+            explanation_parts.append("Interventions generate positive returns.\n\n")
+        else:
+            explanation_parts.append(
+                "Consider reviewing intervention targeting to improve efficiency.\n\n"
+            )
+    
+    # Recommendations
+    explanation_parts.append("### Recommendations\n\n")
+    
+    if budget_utilization < 80:
+        explanation_parts.append(
+            "- **Budget Opportunity**: Not all budget was utilized. Consider increasing "
+            "intervention scope or lowering cost thresholds to capture more high-value targets.\n\n"
+        )
+    
+    if roi > 100 and n_interventions < budget / intervention_cost * 0.8:
+        explanation_parts.append(
+            "- **Scale Opportunity**: Strong ROI suggests potential to scale interventions "
+            "within remaining budget capacity.\n\n"
+        )
+    
+    explanation_parts.append(
+        "- **Monitor Performance**: Track actual outcomes against these expected metrics "
+        "to validate model predictions and refine strategy.\n\n"
+    )
+    explanation_parts.append(
+        "- **Continuous Improvement**: Use these insights to optimize intervention targeting, "
+        "improve customer segmentation, and enhance retention program effectiveness."
+    )
+    
+    return "".join(explanation_parts)
 
 
 def analyze_what_if_scenario(scenario_comparison: Dict[str, Dict[str, Any]], question: str) -> str:
     """
-    Analyze what-if scenarios based on comparison data.
+    Analyze what-if scenarios using rule-based logic and scenario comparison.
     
     Args:
         scenario_comparison: Dictionary of scenario_name -> scenario_results
-        question: User's what-if question
+        question: User's what-if question (analyzed for keywords)
         
     Returns:
         str: Analysis and recommendations
     """
-    client = get_llm_client()
-    if not client:
-        return "LLM explanations require OPENAI_API_KEY environment variable to be set."
+    if not scenario_comparison:
+        return "No scenario data available for analysis."
     
-    # Format scenario data
-    scenario_summary = []
+    question_lower = question.lower()
+    
+    explanation_parts = [
+        "## What-If Scenario Analysis\n\n",
+        f"**Your Question**: {question}\n\n",
+        "### Scenario Comparison\n\n"
+    ]
+    
+    # Extract key metrics from scenarios
+    scenarios_data = []
     for name, results in scenario_comparison.items():
-        scenario_summary.append(
-            f"{name}: ROI={results.get('roi', 0):.1f}%, "
-            f"Net Benefit=${results.get('net_benefit', 0):,.0f}, "
-            f"Interventions={results.get('n_interventions', 0)}"
+        scenarios_data.append({
+            'name': name,
+            'roi': results.get('roi', 0),
+            'net_benefit': results.get('net_benefit', 0),
+            'interventions': results.get('n_interventions', 0),
+            'cost': results.get('total_cost', 0),
+            'revenue_saved': results.get('expected_revenue_saved', 0)
+        })
+    
+    # Sort by ROI for recommendation
+    scenarios_data.sort(key=lambda x: x['roi'], reverse=True)
+    
+    # Display scenario comparison
+    for scenario in scenarios_data:
+        explanation_parts.append(
+            f"**{scenario['name']} Strategy**:\n"
+            f"- ROI: {scenario['roi']:.1f}%\n"
+            f"- Net Benefit: ${scenario['net_benefit']:,.0f}\n"
+            f"- Interventions: {scenario['interventions']:,}\n"
+            f"- Revenue Saved: ${scenario['revenue_saved']:,.0f}\n\n"
         )
     
-    scenario_text = "\n".join(scenario_summary)
+    # Identify best performing scenario
+    best_scenario = scenarios_data[0] if scenarios_data else None
     
-    prompt = f"""As a retention strategy consultant, answer this what-if question based on the scenario comparison data.
-
-Scenarios analyzed:
-{scenario_text}
-
-Question: {question}
-
-Provide a data-driven analysis and recommendation. Be specific about trade-offs and uncertainties.
-Keep response concise (3-4 paragraphs)."""
+    explanation_parts.append("### Analysis\n\n")
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
+    # Keyword-based analysis
+    if 'budget' in question_lower or 'spend' in question_lower or 'cost' in question_lower:
+        explanation_parts.append(
+            "**Budget Impact Analysis**: Higher budgets typically enable more interventions, "
+            "but ROI may decrease as lower-priority targets are included. The optimal budget "
+            "balances total revenue protection with cost efficiency.\n\n"
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Error generating analysis: {str(e)}"
+        
+        if best_scenario and best_scenario['name'] != 'No Intervention':
+            explanation_parts.append(
+                f"The {best_scenario['name']} strategy shows the best ROI ({best_scenario['roi']:.1f}%). "
+                f"This suggests the current budget allocation is effectively targeting high-value customers.\n\n"
+            )
+    
+    if 'double' in question_lower or 'increase' in question_lower or 'more' in question_lower:
+        explanation_parts.append(
+            "**Scaling Analysis**: Increasing budget or interventions generally increases total "
+            "revenue saved, but may reduce ROI as marginal returns decrease. Monitor the "
+            "trade-off between scale and efficiency.\n\n"
+        )
+    
+    if 'risk' in question_lower or 'tolerance' in question_lower or 'conservative' in question_lower or 'aggressive' in question_lower:
+        explanation_parts.append(
+            "**Risk Strategy Comparison**: Different risk tolerance levels prioritize different "
+            "customer segments. Conservative strategies focus on high-value customers, while "
+            "aggressive strategies target high-risk customers regardless of value.\n\n"
+        )
+        
+        conservative = next((s for s in scenarios_data if 'Conservative' in s['name']), None)
+        aggressive = next((s for s in scenarios_data if 'Aggressive' in s['name']), None)
+        
+        if conservative and aggressive:
+            if conservative['roi'] > aggressive['roi']:
+                explanation_parts.append(
+                    "Conservative strategy shows higher ROI, indicating that prioritizing "
+                    "high-value customers is more cost-effective in this dataset.\n\n"
+                )
+            else:
+                explanation_parts.append(
+                    "Aggressive strategy shows higher ROI, suggesting that high-risk customers "
+                    "represent better retention opportunities.\n\n"
+                )
+    
+    # General recommendation
+    if best_scenario and best_scenario['name'] != 'No Intervention':
+        explanation_parts.append(
+            f"### Recommendation\n\n"
+            f"Based on the scenario comparison, the **{best_scenario['name']}** strategy "
+            f"demonstrates the best performance with {best_scenario['roi']:.1f}% ROI and "
+            f"${best_scenario['net_benefit']:,.0f} net benefit. "
+        )
+        
+        explanation_parts.append(
+            "This strategy effectively balances intervention costs with expected revenue protection. "
+            "Consider implementing this approach while monitoring actual outcomes to validate predictions."
+        )
+    else:
+        explanation_parts.append(
+            "### Recommendation\n\n"
+            "Compare the scenario metrics above to identify the strategy that best aligns "
+            "with your business objectives, risk tolerance, and resource constraints."
+        )
+    
+    return "".join(explanation_parts)
 
 
 def explain_risk_uncertainty(best_worst_case: Dict[str, Any]) -> str:
     """
-    Explain risk and uncertainty in the retention strategy.
+    Explain risk and uncertainty using Monte Carlo simulation statistics.
     
     Args:
         best_worst_case: Dictionary with best/worst case statistics
@@ -171,32 +330,99 @@ def explain_risk_uncertainty(best_worst_case: Dict[str, Any]) -> str:
     Returns:
         str: Explanation text
     """
-    client = get_llm_client()
-    if not client:
-        return "LLM explanations require OPENAI_API_KEY environment variable to be set."
-    
     revenue_stats = best_worst_case.get('revenue_saved', {})
+    customers_stats = best_worst_case.get('customers_saved', {})
     
-    prompt = f"""As a risk analyst, explain the uncertainty and risk in this retention strategy based on Monte Carlo simulation results.
-
-Revenue saved statistics:
-- Expected (mean): ${revenue_stats.get('mean', 0):,.0f}
-- Best case (95th percentile): ${revenue_stats.get('best_case_95', 0):,.0f}
-- Worst case (5th percentile): ${revenue_stats.get('worst_case_5', 0):,.0f}
-- Standard deviation: ${revenue_stats.get('std', 0):,.0f}
-
-Explain what this uncertainty means for decision-making. What should executives consider when evaluating this strategy?
-Focus on practical risk management implications."""
+    if not revenue_stats:
+        return "No risk analysis data available."
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=400
+    mean_rev = revenue_stats.get('mean', 0)
+    std_rev = revenue_stats.get('std', 0)
+    best_95 = revenue_stats.get('best_case_95', 0)
+    worst_5 = revenue_stats.get('worst_case_5', 0)
+    
+    explanation_parts = [
+        "## Risk & Uncertainty Analysis\n\n",
+        "This analysis uses Monte Carlo simulation (1,000 iterations) to quantify uncertainty "
+        "in retention strategy outcomes, accounting for the probabilistic nature of churn predictions.\n\n",
+        "### Revenue Saved Distribution\n\n",
+        f"- **Expected Value (Mean)**: ${mean_rev:,.0f}\n",
+        f"- **Best Case (95th Percentile)**: ${best_95:,.0f}\n",
+        f"- **Worst Case (5th Percentile)**: ${worst_5:,.0f}\n",
+        f"- **Standard Deviation**: ${std_rev:,.0f}\n",
+        f"- **Coefficient of Variation**: {(std_rev / mean_rev * 100) if mean_rev > 0 else 0:.1f}%\n\n"
+    ]
+    
+    # Risk assessment
+    explanation_parts.append("### Risk Assessment\n\n")
+    
+    cv = (std_rev / mean_rev * 100) if mean_rev > 0 else 0
+    
+    if cv < 20:
+        explanation_parts.append(
+            "**Low Uncertainty**: The coefficient of variation is below 20%, indicating "
+            "relatively predictable outcomes. You can expect results close to the expected value "
+            "with high confidence.\n\n"
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Error generating explanation: {str(e)}"
-
-
+    elif cv < 40:
+        explanation_parts.append(
+            "**Moderate Uncertainty**: The coefficient of variation suggests moderate variability "
+            "in outcomes. While the expected value is a good estimate, actual results may vary "
+            "within a reasonable range.\n\n"
+        )
+    else:
+        explanation_parts.append(
+            "**High Uncertainty**: Significant variability in potential outcomes. The expected value "
+            "represents an average, but actual results could vary substantially. Consider this "
+            "uncertainty in decision-making and planning.\n\n"
+        )
+    
+    # Range analysis
+    range_pct = ((best_95 - worst_5) / mean_rev * 100) if mean_rev > 0 else 0
+    
+    explanation_parts.append(
+        f"**Outcome Range**: The 90% confidence interval spans from ${worst_5:,.0f} to "
+        f"${best_95:,.0f}, representing {range_pct:.1f}% of the expected value. "
+    )
+    
+    if range_pct < 50:
+        explanation_parts.append("This narrow range indicates reliable predictions.\n\n")
+    elif range_pct < 100:
+        explanation_parts.append("This moderate range suggests some variability should be expected.\n\n")
+    else:
+        explanation_parts.append(
+            "This wide range indicates significant uncertainty—plan for various outcome scenarios.\n\n"
+        )
+    
+    # Worst case analysis
+    explanation_parts.append("### Worst-Case Scenario Planning\n\n")
+    explanation_parts.append(
+        f"The 5th percentile outcome (${worst_5:,.0f}) represents a conservative estimate "
+        "of revenue saved. Even in this pessimistic scenario, the strategy may still generate "
+        "positive returns, depending on intervention costs.\n\n"
+    )
+    
+    # Best case analysis
+    explanation_parts.append("### Best-Case Scenario Potential\n\n")
+    explanation_parts.append(
+        f"The 95th percentile outcome (${best_95:,.0f}) represents an optimistic estimate. "
+        "While unlikely, this outcome demonstrates the strategy's upside potential under "
+        "favorable conditions.\n\n"
+    )
+    
+    # Decision-making guidance
+    explanation_parts.append("### Decision-Making Guidance\n\n")
+    explanation_parts.append(
+        "- **Use Expected Value** for planning and budget allocation\n"
+        "- **Consider Worst Case** when assessing risk tolerance and setting expectations\n"
+        "- **Understand Variability** when communicating uncertainty to stakeholders\n"
+        "- **Monitor Actuals** to validate predictions and improve model accuracy over time\n\n"
+    )
+    
+    explanation_parts.append(
+        "The probabilistic nature of churn means actual outcomes will vary. This analysis "
+        "helps quantify that uncertainty and supports informed decision-making under conditions "
+        "of risk."
+    )
+    
+    return "".join(explanation_parts)

@@ -6,7 +6,6 @@ Main Streamlit application
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 from src.data_utils import load_and_validate_data, clean_data, prepare_features
 from src.eda import (
     compute_basic_stats, segment_customers, analyze_churn_drivers,
@@ -28,6 +27,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Demo Mode Indicator (No External APIs Required)
+DEMO_MODE = True  # Explainable ML Mode - all insights are rule-based and deterministic
 
 # Initialize session state
 if 'data_loaded' not in st.session_state:
@@ -185,6 +187,11 @@ def main():
     if not st.session_state.data_loaded:
         st.title("RetainOps")
         st.subheader("Customer Retention Policy & Budget Optimization Simulator")
+        
+        # Demo Mode Badge
+        st.success("🔬 **Explainable ML Mode**: This application uses deterministic, rule-based explanations. "
+                   "No external APIs or API keys required.")
+        
         st.markdown("---")
         st.info("👈 Please upload a CSV file with customer data in the sidebar to begin.")
         st.markdown("""
@@ -196,7 +203,7 @@ def main():
         - **Analyze** churn drivers and customer segments
         - **Simulate** retention policy strategies under budget constraints
         - **Compare** multiple scenarios to optimize ROI
-        - **Get AI-powered** insights and recommendations
+        - **Get explainable insights** and recommendations (rule-based, no external APIs)
         
         Upload your customer data to get started with churn risk analysis and retention policy optimization.
         """)
@@ -209,7 +216,7 @@ def main():
         "🎯 Churn Risk Model",
         "💰 Retention Policy Simulator",
         "📈 Scenario Comparison",
-        "🤖 AI Strategy Assistant"
+        "📊 Explainable Insights"
     ])
     
     # Tab 1: Overview
@@ -577,12 +584,17 @@ def main():
                 st.write(f"- Worst Case (5th %ile): {cust_stats['worst_case_5']:.1f}")
                 st.write(f"- Std Dev: {cust_stats['std']:.1f}")
     
-    # Tab 6: AI Strategy Assistant
+    # Tab 6: Explainable Insights (formerly AI Strategy Assistant)
     with tab6:
-        st.header("AI Strategy Assistant")
+        st.header("📊 Explainable Insights")
+        
+        # Display Demo Mode badge
+        st.info("🔬 **Explainable ML Mode (No External APIs)**: All insights are generated using "
+                "rule-based logic, feature importance analysis, and statistical heuristics. "
+                "No API keys or external services required.")
         
         if not st.session_state.model_trained:
-            st.info("Run simulation from the sidebar to access AI-powered insights.")
+            st.info("Run simulation from the sidebar to access explainable insights.")
         else:
             # Churn Drivers Explanation
             st.subheader("Churn Drivers Analysis")
@@ -592,7 +604,7 @@ def main():
                 st.session_state.feature_importance['importance']
             ))
             
-            with st.spinner("Generating insights..."):
+            with st.spinner("Analyzing feature importance..."):
                 churn_drivers_explanation = explain_churn_drivers(
                     feature_importance_dict,
                     top_n=5
@@ -642,7 +654,8 @@ def main():
                 st.divider()
                 
                 # What-If Analysis
-                st.subheader("What-If Analysis")
+                st.subheader("What-If Scenario Analysis")
+                st.caption("Enter a question about budget, costs, or strategy to compare scenarios.")
                 
                 user_question = st.text_input(
                     "Ask a what-if question:",
@@ -679,7 +692,7 @@ def main():
                         )
                     }
                     
-                    with st.spinner("Analyzing scenario..."):
+                    with st.spinner("Analyzing scenarios..."):
                         whatif_analysis = analyze_what_if_scenario(
                             scenarios_whatif,
                             user_question
