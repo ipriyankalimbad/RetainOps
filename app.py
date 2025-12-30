@@ -636,21 +636,40 @@ def main():
                 retention_budget = st.session_state.get('retention_budget', 50000.0)
                 intervention_cost = st.session_state.get('intervention_cost', 100.0)
                 
-                # Run balanced scenario for explanation
-                balanced_scenario = simulate_scenario(
+                # Strategy selector
+                selected_strategy = st.selectbox(
+                    "Select Strategy to Analyze:",
+                    ["Conservative", "Balanced", "Aggressive"],
+                    index=1,  # Default to Balanced
+                    help="Choose which retention strategy to analyze and get insights for"
+                )
+                
+                # Map strategy to risk tolerance
+                strategy_params = {
+                    "Conservative": {"risk_tolerance": 0.7, "name": "Conservative"},
+                    "Balanced": {"risk_tolerance": 1.0, "name": "Balanced"},
+                    "Aggressive": {"risk_tolerance": 1.5, "name": "Aggressive"}
+                }
+                
+                selected_params = strategy_params[selected_strategy]
+                
+                # Run scenario for selected strategy
+                selected_scenario = simulate_scenario(
                     st.session_state.df_processed,
                     st.session_state.churn_probabilities,
                     st.session_state.customer_revenue,
                     retention_budget,
                     intervention_cost,
-                    1.0
+                    selected_params["risk_tolerance"]
                 )
                 
-                with st.spinner("Analyzing retention strategy..."):
+                with st.spinner(f"Analyzing {selected_strategy.lower()} retention strategy..."):
                     policy_explanation = explain_retention_policy(
-                        balanced_scenario,
+                        selected_scenario,
                         retention_budget,
-                        intervention_cost
+                        intervention_cost,
+                        selected_params["name"],
+                        selected_params["risk_tolerance"]
                     )
                 st.markdown(policy_explanation)
                 
@@ -658,9 +677,10 @@ def main():
                 
                 # Risk & Uncertainty Explanation
                 st.subheader("Risk & Uncertainty Analysis")
+                st.caption(f"Risk analysis for {selected_strategy} strategy")
                 
-                balanced_allocation = balanced_scenario['allocation_df']
-                best_worst = calculate_best_worst_case(balanced_allocation)
+                selected_allocation = selected_scenario['allocation_df']
+                best_worst = calculate_best_worst_case(selected_allocation)
                 
                 with st.spinner("Analyzing risk..."):
                     risk_explanation = explain_risk_uncertainty(best_worst)
@@ -696,7 +716,14 @@ def main():
                             intervention_cost,
                             0.7
                         ),
-                        'Balanced': balanced_scenario,
+                        'Balanced': simulate_scenario(
+                            st.session_state.df_processed,
+                            st.session_state.churn_probabilities,
+                            st.session_state.customer_revenue,
+                            retention_budget,
+                            intervention_cost,
+                            1.0
+                        ),
                         'Aggressive': simulate_scenario(
                             st.session_state.df_processed,
                             st.session_state.churn_probabilities,

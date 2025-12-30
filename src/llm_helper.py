@@ -90,7 +90,7 @@ def explain_churn_drivers(feature_importance: Dict[str, float], top_n: int = 5) 
     return "".join(explanation_parts)
 
 
-def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, intervention_cost: float) -> str:
+def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, intervention_cost: float, strategy_name: str = "Balanced", risk_tolerance: float = 1.0) -> str:
     """
     Generate rule-based explanation of retention policy strategy.
     
@@ -98,6 +98,8 @@ def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, in
         scenario_results: Dictionary with scenario metrics
         budget: Total budget used
         intervention_cost: Cost per intervention
+        strategy_name: Name of the strategy (Conservative, Balanced, Aggressive)
+        risk_tolerance: Risk tolerance value used (0.7, 1.0, 1.5)
         
     Returns:
         str: Explanation text
@@ -109,9 +111,33 @@ def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, in
     total_cost = scenario_results.get('total_cost', n_interventions * intervention_cost)
     
     explanation_parts = [
-        "## Retention Policy Strategy Analysis\n\n",
-        "### Allocation Summary\n\n"
+        f"## {strategy_name} Strategy Analysis\n\n",
+        "### Strategy Overview\n\n"
     ]
+    
+    # Strategy-specific explanation
+    if strategy_name == "Conservative":
+        explanation_parts.append(
+            "**Conservative Strategy** (Risk Tolerance: 0.7): This strategy prioritizes **high-value customers** "
+            "over high-risk customers. It uses a lower risk weight, meaning customer revenue has more influence "
+            "than churn probability in the scoring. This approach is best when you want to protect your most "
+            "valuable customers, even if they have lower churn risk.\n\n"
+        )
+    elif strategy_name == "Aggressive":
+        explanation_parts.append(
+            "**Aggressive Strategy** (Risk Tolerance: 1.5): This strategy prioritizes **high-risk customers** "
+            "regardless of their value. It uses a higher risk weight, meaning churn probability has more influence "
+            "than customer revenue in the scoring. This approach is best when you want to prevent as many churns "
+            "as possible, focusing on customers most likely to leave.\n\n"
+        )
+    else:  # Balanced
+        explanation_parts.append(
+            "**Balanced Strategy** (Risk Tolerance: 1.0): This strategy balances both **churn risk and customer value** "
+            "equally. It uses equal weighting for both factors in the scoring. This approach is best when you want "
+            "to optimize for overall ROI, considering both the probability of churn and the financial impact.\n\n"
+        )
+    
+    explanation_parts.append("### Allocation Summary\n\n")
     
     # Budget utilization analysis
     budget_utilization = (total_cost / budget * 100) if budget > 0 else 0
@@ -128,8 +154,30 @@ def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, in
     explanation_parts.append(f"- **Net Benefit**: ${net_benefit:,.0f}\n")
     explanation_parts.append(f"- **Return on Investment (ROI)**: {roi:.1f}%\n\n")
     
+    # Strategy-specific targeting analysis
+    explanation_parts.append("### Targeting Analysis\n\n")
+    
+    if strategy_name == "Conservative":
+        explanation_parts.append(
+            "**Targeting Focus**: High-value customers with moderate to high churn risk. "
+            "This strategy protects revenue by focusing on customers who contribute the most financially, "
+            "even if their immediate churn risk is not the highest.\n\n"
+        )
+    elif strategy_name == "Aggressive":
+        explanation_parts.append(
+            "**Targeting Focus**: High-risk customers regardless of value. "
+            "This strategy prevents churn by targeting customers most likely to leave, "
+            "prioritizing risk reduction over revenue protection.\n\n"
+        )
+    else:  # Balanced
+        explanation_parts.append(
+            "**Targeting Focus**: Customers with balanced risk-value profiles. "
+            "This strategy optimizes ROI by targeting customers where both churn probability "
+            "and revenue impact are considered equally.\n\n"
+        )
+    
     # Strategic interpretation
-    explanation_parts.append("### Strategic Assessment\n\n")
+    explanation_parts.append("### Financial Performance Assessment\n\n")
     
     if roi > 200:
         explanation_parts.append(
@@ -175,24 +223,55 @@ def explain_retention_policy(scenario_results: Dict[str, Any], budget: float, in
                 "Consider reviewing intervention targeting to improve efficiency.\n\n"
             )
     
-    # Recommendations
+    # Strategy-specific recommendations
     explanation_parts.append("### Recommendations\n\n")
+    
+    if strategy_name == "Conservative":
+        explanation_parts.append(
+            "- **Strategy Fit**: This conservative approach is ideal when customer lifetime value "
+            "is critical and you want to protect your highest-revenue customers.\n"
+        )
+        if roi < 50:
+            explanation_parts.append(
+                "- **Consider Alternative**: Low ROI may indicate that high-value customers have low "
+                "churn risk. Consider switching to Balanced or Aggressive strategy.\n"
+            )
+    elif strategy_name == "Aggressive":
+        explanation_parts.append(
+            "- **Strategy Fit**: This aggressive approach is ideal when preventing churn volume "
+            "is the priority, even if some interventions target lower-value customers.\n"
+        )
+        if roi < 50:
+            explanation_parts.append(
+                "- **Consider Alternative**: Low ROI may indicate that high-risk customers have low "
+                "value. Consider switching to Conservative or Balanced strategy.\n"
+            )
+    else:  # Balanced
+        explanation_parts.append(
+            "- **Strategy Fit**: This balanced approach optimizes for overall ROI by considering "
+            "both risk and value equally.\n"
+        )
     
     if budget_utilization < 80:
         explanation_parts.append(
-            "- **Budget Opportunity**: Not all budget was utilized. Consider increasing "
-            "intervention scope or lowering cost thresholds to capture more high-value targets.\n\n"
+            "- **Budget Opportunity**: Not all budget was utilized ({budget_utilization:.1f}%). "
+            "Consider increasing intervention scope or adjusting targeting criteria to capture "
+            "more high-value targets.\n"
         )
     
     if roi > 100 and n_interventions < budget / intervention_cost * 0.8:
         explanation_parts.append(
-            "- **Scale Opportunity**: Strong ROI suggests potential to scale interventions "
-            "within remaining budget capacity.\n\n"
+            "- **Scale Opportunity**: Strong ROI ({roi:.1f}%) suggests potential to scale interventions "
+            "within remaining budget capacity. Consider expanding the intervention pool.\n"
         )
     
     explanation_parts.append(
         "- **Monitor Performance**: Track actual outcomes against these expected metrics "
-        "to validate model predictions and refine strategy.\n\n"
+        "to validate model predictions and refine strategy.\n"
+    )
+    explanation_parts.append(
+        "- **Compare Strategies**: Review the Scenario Comparison tab to see how this strategy "
+        "performs relative to Conservative and Aggressive approaches.\n"
     )
     explanation_parts.append(
         "- **Continuous Improvement**: Use these insights to optimize intervention targeting, "
@@ -275,26 +354,59 @@ def analyze_what_if_scenario(scenario_comparison: Dict[str, Dict[str, Any]], que
             "trade-off between scale and efficiency.\n\n"
         )
     
-    if 'risk' in question_lower or 'tolerance' in question_lower or 'conservative' in question_lower or 'aggressive' in question_lower:
+    if 'risk' in question_lower or 'tolerance' in question_lower or 'conservative' in question_lower or 'aggressive' in question_lower or 'strategy' in question_lower:
         explanation_parts.append(
             "**Risk Strategy Comparison**: Different risk tolerance levels prioritize different "
-            "customer segments. Conservative strategies focus on high-value customers, while "
-            "aggressive strategies target high-risk customers regardless of value.\n\n"
+            "customer segments:\n\n"
+            "- **Conservative (0.7)**: Prioritizes high-value customers over high-risk customers. "
+            "Best when protecting revenue from your most valuable customers is the priority.\n"
+            "- **Balanced (1.0)**: Equally weights churn risk and customer value. "
+            "Best for optimizing overall ROI.\n"
+            "- **Aggressive (1.5)**: Prioritizes high-risk customers regardless of value. "
+            "Best when preventing as many churns as possible is the priority.\n\n"
         )
         
         conservative = next((s for s in scenarios_data if 'Conservative' in s['name']), None)
+        balanced = next((s for s in scenarios_data if 'Balanced' in s['name']), None)
         aggressive = next((s for s in scenarios_data if 'Aggressive' in s['name']), None)
         
-        if conservative and aggressive:
-            if conservative['roi'] > aggressive['roi']:
+        if conservative and balanced and aggressive:
+            # Compare strategies
+            strategies_compared = [
+                ("Conservative", conservative),
+                ("Balanced", balanced),
+                ("Aggressive", aggressive)
+            ]
+            strategies_compared.sort(key=lambda x: x[1]['roi'], reverse=True)
+            
+            explanation_parts.append("**Strategy Performance Ranking**:\n\n")
+            for rank, (name, data) in enumerate(strategies_compared, 1):
                 explanation_parts.append(
-                    "Conservative strategy shows higher ROI, indicating that prioritizing "
-                    "high-value customers is more cost-effective in this dataset.\n\n"
+                    f"{rank}. **{name}**: ROI {data['roi']:.1f}%, "
+                    f"Net Benefit ${data['net_benefit']:,.0f}, "
+                    f"{data['interventions']:,} interventions\n"
+                )
+            
+            explanation_parts.append("\n")
+            
+            best_strategy = strategies_compared[0]
+            if best_strategy[0] == "Conservative":
+                explanation_parts.append(
+                    "The **Conservative** strategy performs best, indicating that prioritizing "
+                    "high-value customers generates the highest ROI in this dataset. This suggests "
+                    "that customer value is a stronger predictor of retention ROI than churn risk alone.\n\n"
+                )
+            elif best_strategy[0] == "Aggressive":
+                explanation_parts.append(
+                    "The **Aggressive** strategy performs best, indicating that prioritizing "
+                    "high-risk customers generates the highest ROI. This suggests that churn risk "
+                    "is a stronger predictor of retention ROI than customer value alone.\n\n"
                 )
             else:
                 explanation_parts.append(
-                    "Aggressive strategy shows higher ROI, suggesting that high-risk customers "
-                    "represent better retention opportunities.\n\n"
+                    "The **Balanced** strategy performs best, indicating that equally weighting "
+                    "churn risk and customer value optimizes ROI. This suggests both factors are "
+                    "important for effective retention targeting.\n\n"
                 )
     
     # General recommendation
