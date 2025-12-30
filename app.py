@@ -56,6 +56,8 @@ if 'scenarios_cache' not in st.session_state:
     st.session_state.scenarios_cache = {}
 if 'scenarios_cache_key' not in st.session_state:
     st.session_state.scenarios_cache_key = None
+if 'monte_carlo_cache' not in st.session_state:
+    st.session_state.monte_carlo_cache = {}
 
 
 def main():
@@ -153,9 +155,10 @@ def main():
             )
             
             if run_simulation:
-                # Clear scenario cache when running new simulation
+                # Clear scenario cache and Monte Carlo cache when running new simulation
                 st.session_state.scenarios_cache = {}
                 st.session_state.scenarios_cache_key = None
+                st.session_state.monte_carlo_cache = {}
                 
                 with st.spinner("Training model and running simulation..."):
                     # Train model if not already trained
@@ -568,9 +571,14 @@ def main():
                     1.5  # Higher risk tolerance
                 )
                 
-                # Cache scenarios
+                # Cache scenarios (also cache individual scenarios for Tab 6)
                 st.session_state.scenarios_cache['scenarios'] = scenarios
                 st.session_state.scenarios_cache_key = cache_key
+                
+                # Also cache individual scenarios for faster access in Tab 6
+                for strategy_name, scenario in scenarios.items():
+                    scenario_cache_key = f"{strategy_name}_{cache_key}"
+                    st.session_state.scenarios_cache[scenario_cache_key] = scenario
             
             # Compare scenarios
             comparison_df = compare_scenarios(scenarios)
@@ -601,7 +609,24 @@ def main():
             
             # Use balanced scenario for risk analysis
             balanced_allocation = scenarios['Balanced']['allocation_df']
-            best_worst = calculate_best_worst_case(balanced_allocation)
+            
+            # Cache Monte Carlo results to avoid recomputation
+            allocation_hash = hash((
+                len(balanced_allocation),
+                balanced_allocation['intervention_allocated'].sum(),
+                balanced_allocation['revenue_saved'].sum(),
+                tuple(balanced_allocation['churn_probability'].head(10).values) if len(balanced_allocation) > 10 else tuple(balanced_allocation['churn_probability'].values)
+            ))
+            monte_carlo_cache_key = f"monte_carlo_{allocation_hash}"
+            
+            # Check if Monte Carlo results are cached
+            if monte_carlo_cache_key in st.session_state.monte_carlo_cache:
+                best_worst = st.session_state.monte_carlo_cache[monte_carlo_cache_key]
+            else:
+                # Compute Monte Carlo simulation
+                best_worst = calculate_best_worst_case(balanced_allocation)
+                # Cache the results
+                st.session_state.monte_carlo_cache[monte_carlo_cache_key] = best_worst
             
             fig_risk = create_risk_analysis_plot(best_worst)
             st.plotly_chart(fig_risk, use_container_width=True)
@@ -678,15 +703,52 @@ def main():
                 
                 selected_params = strategy_params[selected_strategy]
                 
-                # Run scenario for selected strategy
-                selected_scenario = simulate_scenario(
-                    st.session_state.df_processed,
-                    st.session_state.churn_probabilities,
-                    st.session_state.customer_revenue,
+                # Check if scenario is already cached (from Tab 5 or previous computation)
+                cache_key = (
+                    len(st.session_state.df_processed),
                     retention_budget,
                     intervention_cost,
-                    selected_params["risk_tolerance"]
+                    tuple(st.session_state.churn_probabilities[:10]) if len(st.session_state.churn_probabilities) > 10 else tuple(st.session_state.churn_probabilities)
                 )
+                
+                # Try to get scenario from cache first
+                scenario_cache_key = f"{selected_strategy}_{cache_key}"
+                
+                if (st.session_state.scenarios_cache_key == cache_key and 
+                    scenario_cache_key in st.session_state.scenarios_cache):
+                    # Use cached scenario
+                    selected_scenario = st.session_state.scenarios_cache[scenario_cache_key]
+                elif (st.session_state.scenarios_cache_key == cache_key and 
+                      'scenarios' in st.session_state.scenarios_cache):
+                    # Use scenario from Tab 5 cache if available
+                    scenarios_from_cache = st.session_state.scenarios_cache['scenarios']
+                    if selected_strategy in scenarios_from_cache:
+                        selected_scenario = scenarios_from_cache[selected_strategy]
+                    else:
+                        # Compute new scenario
+                        selected_scenario = simulate_scenario(
+                            st.session_state.df_processed,
+                            st.session_state.churn_probabilities,
+                            st.session_state.customer_revenue,
+                            retention_budget,
+                            intervention_cost,
+                            selected_params["risk_tolerance"]
+                        )
+                        # Cache it
+                        st.session_state.scenarios_cache[scenario_cache_key] = selected_scenario
+                else:
+                    # Compute new scenario
+                    selected_scenario = simulate_scenario(
+                        st.session_state.df_processed,
+                        st.session_state.churn_probabilities,
+                        st.session_state.customer_revenue,
+                        retention_budget,
+                        intervention_cost,
+                        selected_params["risk_tolerance"]
+                    )
+                    # Cache it
+                    st.session_state.scenarios_cache[scenario_cache_key] = selected_scenario
+                    st.session_state.scenarios_cache_key = cache_key
                 
                 with st.spinner(f"Analyzing {selected_strategy.lower()} retention strategy..."):
                     policy_explanation = explain_retention_policy(
@@ -705,7 +767,25 @@ def main():
                 st.caption(f"Risk analysis for {selected_strategy} strategy")
                 
                 selected_allocation = selected_scenario['allocation_df']
-                best_worst = calculate_best_worst_case(selected_allocation)
+                
+                # Cache Monte Carlo results to avoid recomputation
+                # Create cache key based on allocation data hash (deterministic)
+                allocation_hash = hash((
+                    len(selected_allocation),
+                    selected_allocation['intervention_allocated'].sum(),
+                    selected_allocation['revenue_saved'].sum(),
+                    tuple(selected_allocation['churn_probability'].head(10).values) if len(selected_allocation) > 10 else tuple(selected_allocation['churn_probability'].values)
+                ))
+                monte_carlo_cache_key = f"monte_carlo_{allocation_hash}"
+                
+                # Check if Monte Carlo results are cached
+                if monte_carlo_cache_key in st.session_state.monte_carlo_cache:
+                    best_worst = st.session_state.monte_carlo_cache[monte_carlo_cache_key]
+                else:
+                    # Compute Monte Carlo simulation
+                    best_worst = calculate_best_worst_case(selected_allocation)
+                    # Cache the results
+                    st.session_state.monte_carlo_cache[monte_carlo_cache_key] = best_worst
                 
                 with st.spinner("Analyzing risk..."):
                     risk_explanation = explain_risk_uncertainty(best_worst)
