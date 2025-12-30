@@ -44,10 +44,22 @@ def train_churn_model(X, y, categorical_features, validation_size=0.2):
     # Prepare categorical indices
     cat_indices = prepare_categorical_indices(X, categorical_features)
     
-    # Split data with stratification to preserve churn distribution
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=validation_size, random_state=42, stratify=y
-    )
+    # Check if stratification is possible
+    # Stratification requires at least 2 samples per class
+    unique_classes, class_counts = np.unique(y, return_counts=True)
+    can_stratify = len(unique_classes) > 1 and all(count >= 2 for count in class_counts)
+    
+    # Split data with stratification if possible, otherwise without
+    if can_stratify:
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=validation_size, random_state=42, stratify=y
+        )
+    else:
+        # Fall back to non-stratified split if stratification isn't possible
+        # This happens when there's only one class or insufficient samples per class
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=validation_size, random_state=42
+        )
     
     # Conservative CatBoost parameters for stability and calibration
     model_params = {
@@ -185,5 +197,6 @@ def create_feature_importance_plot(feature_importance, top_n=15):
     )
     
     return fig
+
 
 

@@ -157,6 +157,18 @@ def main():
                             st.session_state.churn_column
                         )
                         
+                        # Validate target variable before training
+                        unique_classes = y.unique()
+                        class_counts = y.value_counts()
+                        
+                        if len(unique_classes) == 1:
+                            st.warning(f"⚠️ Warning: Your dataset has only one class in the target variable (all values are {unique_classes[0]}). "
+                                     "The model may not be meaningful. Please ensure your dataset contains both churned and non-churned customers.")
+                        elif any(count < 2 for count in class_counts.values()):
+                            st.warning(f"⚠️ Warning: One or more classes have very few samples. "
+                                     f"Class distribution: {dict(class_counts)}. "
+                                     "The model will use a non-stratified split, which may affect performance.")
+                        
                         model, train_metrics, val_metrics, feature_importance = train_churn_model(
                             X, y,
                             st.session_state.categorical_features
