@@ -164,7 +164,7 @@ def main():
                         if len(unique_classes) == 1:
                             st.warning(f"⚠️ Warning: Your dataset has only one class in the target variable (all values are {unique_classes[0]}). "
                                      "The model may not be meaningful. Please ensure your dataset contains both churned and non-churned customers.")
-                        elif any(count < 2 for count in class_counts.values()):
+                        elif any(count < 2 for count in class_counts.values):
                             st.warning(f"⚠️ Warning: One or more classes have very few samples. "
                                      f"Class distribution: {dict(class_counts)}. "
                                      "The model will use a non-stratified split, which may affect performance.")
