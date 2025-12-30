@@ -54,15 +54,25 @@ def allocate_interventions(df, churn_probabilities, customer_revenue, total_budg
     result_df['churn_probability'] = churn_probabilities
     result_df['customer_revenue'] = customer_revenue
     
-    # Calculate intervention scores
-    result_df['intervention_score'] = result_df.apply(
-        lambda row: calculate_intervention_score(
-            row['churn_probability'],
-            row['customer_revenue'],
-            intervention_cost,
-            risk_tolerance
-        ),
-        axis=1
+    # Calculate intervention scores (vectorized for performance)
+    # Revenue at risk
+    revenue_at_risk = result_df['churn_probability'] * result_df['customer_revenue']
+    
+    # Expected ROI if intervention succeeds (assume 50% effectiveness)
+    intervention_effectiveness = 0.5
+    expected_saved_revenue = revenue_at_risk * intervention_effectiveness
+    expected_roi = np.where(
+        intervention_cost > 0,
+        (expected_saved_revenue - intervention_cost) / intervention_cost,
+        0
+    )
+    
+    # Combined score: prioritize high risk, high value, positive ROI
+    # Same formula as calculate_intervention_score, but vectorized
+    result_df['intervention_score'] = (
+        (result_df['churn_probability'] ** risk_tolerance) * 
+        result_df['customer_revenue'] * 
+        np.maximum(0, 1 + expected_roi)
     )
     
     # Sort by intervention score (descending)
@@ -79,12 +89,14 @@ def allocate_interventions(df, churn_probabilities, customer_revenue, total_budg
         else:
             break
     
-    # Calculate expected outcomes
+    # Calculate expected outcomes (vectorized for performance)
     intervention_effectiveness = 0.5  # Assume 50% reduction in churn probability
     
-    result_df['churn_probability_after'] = result_df.apply(
-        lambda row: row['churn_probability'] * (1 - intervention_effectiveness) if row['intervention_allocated'] else row['churn_probability'],
-        axis=1
+    # Vectorized: reduce churn probability if intervention allocated, otherwise keep original
+    result_df['churn_probability_after'] = np.where(
+        result_df['intervention_allocated'],
+        result_df['churn_probability'] * (1 - intervention_effectiveness),
+        result_df['churn_probability']
     )
     
     result_df['revenue_at_risk_before'] = result_df['churn_probability'] * result_df['customer_revenue']
@@ -195,5 +207,6 @@ def create_allocation_summary_plot(df_allocated):
     )
     
     return fig
+
 
 

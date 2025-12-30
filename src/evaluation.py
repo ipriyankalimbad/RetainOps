@@ -35,35 +35,50 @@ def compare_scenarios(scenarios_dict):
     return comparison_df
 
 
-def calculate_best_worst_case(df_allocated, n_simulations=1000):
+def calculate_best_worst_case(df_allocated, n_simulations=None):
     """
     Calculate best-case and worst-case outcomes using Monte Carlo simulation.
     
     Args:
         df_allocated: DataFrame with intervention allocation
-        n_simulations: Number of Monte Carlo simulations
+        n_simulations: Number of Monte Carlo simulations (None = adaptive based on dataset size)
         
     Returns:
         dict: Best/worst case statistics
     """
     np.random.seed(42)
     
+    # Adaptive Monte Carlo sampling: more simulations for smaller datasets, fewer for larger
+    if n_simulations is None:
+        n_rows = len(df_allocated)
+        if n_rows < 5000:
+            n_simulations = 1000  # Full precision for small datasets
+        elif n_rows < 20000:
+            n_simulations = 500   # Good precision for medium datasets
+        else:
+            n_simulations = 300   # Sufficient precision for large datasets
+    
+    # Pre-compute arrays for vectorized operations
+    churn_prob = df_allocated['churn_probability'].values
+    churn_prob_after = df_allocated['churn_probability_after'].values
+    customer_revenue = df_allocated['customer_revenue'].values
+    had_intervention = (churn_prob > churn_prob_after)  # Customers who received intervention
+    
     revenues_saved = []
     customers_saved_list = []
     
+    # Vectorized Monte Carlo simulation
     for _ in range(n_simulations):
-        # Simulate actual churn (random based on probability)
-        df_sim = df_allocated.copy()
-        df_sim['actual_churn'] = np.random.binomial(1, df_sim['churn_probability_after'])
+        # Simulate actual churn (vectorized: all customers at once)
+        actual_churn = np.random.binomial(1, churn_prob_after)
         
-        # Calculate actual revenue saved (only for customers who would have churned)
-        df_sim['actual_revenue_saved'] = df_sim.apply(
-            lambda row: row['customer_revenue'] if (row['churn_probability'] > row['churn_probability_after'] and row['actual_churn'] == 0) else 0,
-            axis=1
-        )
+        # Calculate actual revenue saved (vectorized)
+        # Only for customers who: (1) had intervention AND (2) didn't churn
+        saved_mask = had_intervention & (actual_churn == 0)
+        actual_revenue_saved = np.where(saved_mask, customer_revenue, 0)
         
-        total_revenue_saved = df_sim['actual_revenue_saved'].sum()
-        total_customers_saved = len(df_sim[(df_sim['churn_probability'] > df_sim['churn_probability_after']) & (df_sim['actual_churn'] == 0)])
+        total_revenue_saved = np.sum(actual_revenue_saved)
+        total_customers_saved = np.sum(saved_mask)
         
         revenues_saved.append(total_revenue_saved)
         customers_saved_list.append(total_customers_saved)
@@ -194,5 +209,6 @@ def create_risk_analysis_plot(best_worst_case):
     )
     
     return fig
+
 
 

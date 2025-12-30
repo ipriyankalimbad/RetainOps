@@ -52,6 +52,10 @@ if 'customer_revenue' not in st.session_state:
     st.session_state.customer_revenue = None
 if 'revenue_at_risk' not in st.session_state:
     st.session_state.revenue_at_risk = None
+if 'scenarios_cache' not in st.session_state:
+    st.session_state.scenarios_cache = {}
+if 'scenarios_cache_key' not in st.session_state:
+    st.session_state.scenarios_cache_key = None
 
 
 def main():
@@ -149,6 +153,10 @@ def main():
             )
             
             if run_simulation:
+                # Clear scenario cache when running new simulation
+                st.session_state.scenarios_cache = {}
+                st.session_state.scenarios_cache_key = None
+                
                 with st.spinner("Training model and running simulation..."):
                     # Train model if not already trained
                     if not st.session_state.model_trained:
@@ -504,48 +512,65 @@ def main():
             retention_budget = st.session_state.get('retention_budget', 50000.0)
             intervention_cost = st.session_state.get('intervention_cost', 100.0)
             
-            # Simulate multiple scenarios
-            scenarios = {}
-            
-            # No intervention
-            scenarios['No Intervention'] = simulate_scenario(
-                st.session_state.df_processed,
-                st.session_state.churn_probabilities,
-                st.session_state.customer_revenue,
-                0,  # No budget
-                intervention_cost,
-                1.0
-            )
-            
-            # Conservative (lower risk tolerance)
-            scenarios['Conservative'] = simulate_scenario(
-                st.session_state.df_processed,
-                st.session_state.churn_probabilities,
-                st.session_state.customer_revenue,
+            # Create cache key based on parameters (deterministic caching)
+            cache_key = (
+                len(st.session_state.df_processed),
                 retention_budget,
                 intervention_cost,
-                0.7  # Lower risk tolerance
+                tuple(st.session_state.churn_probabilities[:10]) if len(st.session_state.churn_probabilities) > 10 else tuple(st.session_state.churn_probabilities)
             )
             
-            # Balanced (default)
-            scenarios['Balanced'] = simulate_scenario(
-                st.session_state.df_processed,
-                st.session_state.churn_probabilities,
-                st.session_state.customer_revenue,
-                retention_budget,
-                intervention_cost,
-                1.0  # Balanced
-            )
-            
-            # Aggressive (higher risk tolerance)
-            scenarios['Aggressive'] = simulate_scenario(
-                st.session_state.df_processed,
-                st.session_state.churn_probabilities,
-                st.session_state.customer_revenue,
-                retention_budget,
-                intervention_cost,
-                1.5  # Higher risk tolerance
-            )
+            # Check if scenarios are cached
+            if (st.session_state.scenarios_cache_key == cache_key and 
+                'scenarios' in st.session_state.scenarios_cache):
+                scenarios = st.session_state.scenarios_cache['scenarios']
+            else:
+                # Simulate multiple scenarios (only if not cached)
+                scenarios = {}
+                
+                # No intervention
+                scenarios['No Intervention'] = simulate_scenario(
+                    st.session_state.df_processed,
+                    st.session_state.churn_probabilities,
+                    st.session_state.customer_revenue,
+                    0,  # No budget
+                    intervention_cost,
+                    1.0
+                )
+                
+                # Conservative (lower risk tolerance)
+                scenarios['Conservative'] = simulate_scenario(
+                    st.session_state.df_processed,
+                    st.session_state.churn_probabilities,
+                    st.session_state.customer_revenue,
+                    retention_budget,
+                    intervention_cost,
+                    0.7  # Lower risk tolerance
+                )
+                
+                # Balanced (default)
+                scenarios['Balanced'] = simulate_scenario(
+                    st.session_state.df_processed,
+                    st.session_state.churn_probabilities,
+                    st.session_state.customer_revenue,
+                    retention_budget,
+                    intervention_cost,
+                    1.0  # Balanced
+                )
+                
+                # Aggressive (higher risk tolerance)
+                scenarios['Aggressive'] = simulate_scenario(
+                    st.session_state.df_processed,
+                    st.session_state.churn_probabilities,
+                    st.session_state.customer_revenue,
+                    retention_budget,
+                    intervention_cost,
+                    1.5  # Higher risk tolerance
+                )
+                
+                # Cache scenarios
+                st.session_state.scenarios_cache['scenarios'] = scenarios
+                st.session_state.scenarios_cache_key = cache_key
             
             # Compare scenarios
             comparison_df = compare_scenarios(scenarios)
@@ -698,41 +723,53 @@ def main():
                 )
                 
                 if user_question and user_question.strip():
-                    # Get scenario comparison for what-if
-                    scenarios_whatif = {
-                        'No Intervention': simulate_scenario(
-                            st.session_state.df_processed,
-                            st.session_state.churn_probabilities,
-                            st.session_state.customer_revenue,
-                            0,
-                            intervention_cost,
-                            1.0
-                        ),
-                        'Conservative': simulate_scenario(
-                            st.session_state.df_processed,
-                            st.session_state.churn_probabilities,
-                            st.session_state.customer_revenue,
-                            retention_budget,
-                            intervention_cost,
-                            0.7
-                        ),
-                        'Balanced': simulate_scenario(
-                            st.session_state.df_processed,
-                            st.session_state.churn_probabilities,
-                            st.session_state.customer_revenue,
-                            retention_budget,
-                            intervention_cost,
-                            1.0
-                        ),
-                        'Aggressive': simulate_scenario(
-                            st.session_state.df_processed,
-                            st.session_state.churn_probabilities,
-                            st.session_state.customer_revenue,
-                            retention_budget,
-                            intervention_cost,
-                            1.5
-                        )
-                    }
+                    # Get scenario comparison for what-if (reuse cached scenarios if available)
+                    cache_key_whatif = (
+                        len(st.session_state.df_processed),
+                        retention_budget,
+                        intervention_cost,
+                        tuple(st.session_state.churn_probabilities[:10]) if len(st.session_state.churn_probabilities) > 10 else tuple(st.session_state.churn_probabilities)
+                    )
+                    
+                    if (st.session_state.scenarios_cache_key == cache_key_whatif and 
+                        'scenarios' in st.session_state.scenarios_cache):
+                        scenarios_whatif = st.session_state.scenarios_cache['scenarios']
+                    else:
+                        # Get scenario comparison for what-if
+                        scenarios_whatif = {
+                            'No Intervention': simulate_scenario(
+                                st.session_state.df_processed,
+                                st.session_state.churn_probabilities,
+                                st.session_state.customer_revenue,
+                                0,
+                                intervention_cost,
+                                1.0
+                            ),
+                            'Conservative': simulate_scenario(
+                                st.session_state.df_processed,
+                                st.session_state.churn_probabilities,
+                                st.session_state.customer_revenue,
+                                retention_budget,
+                                intervention_cost,
+                                0.7
+                            ),
+                            'Balanced': simulate_scenario(
+                                st.session_state.df_processed,
+                                st.session_state.churn_probabilities,
+                                st.session_state.customer_revenue,
+                                retention_budget,
+                                intervention_cost,
+                                1.0
+                            ),
+                            'Aggressive': simulate_scenario(
+                                st.session_state.df_processed,
+                                st.session_state.churn_probabilities,
+                                st.session_state.customer_revenue,
+                                retention_budget,
+                                intervention_cost,
+                                1.5
+                            )
+                        }
                     
                     with st.spinner("Analyzing scenarios..."):
                         whatif_analysis = analyze_what_if_scenario(
